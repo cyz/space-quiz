@@ -170,6 +170,16 @@
     .result-dots span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: 12px; background: var(--cp-surface-soft); }
     .result-dots .hit { color: var(--cp-success); background: color-mix(in srgb, var(--cp-success) 12%, var(--cp-surface)); }
     .result-dots .miss { color: var(--cp-danger); background: color-mix(in srgb, var(--cp-danger) 10%, var(--cp-surface)); }
+    .review-toggle { width: 100%; padding: 12px 14px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface-soft); color: var(--cp-text); cursor: pointer; font-weight: 650; }
+    .review-toggle:hover { border-color: var(--cp-accent); }
+    .review-list { margin-top: 14px; text-align: left; }
+    .review-item { padding: 16px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface-soft); overflow-wrap: anywhere; }
+    .review-item + .review-item { margin-top: 10px; }
+    .review-item h3 { margin: 0 0 10px; font-size: 16px; line-height: 1.4; }
+    .review-item p { margin: 6px 0 0; color: var(--cp-text-muted); font-size: 13px; }
+    .review-item .your-answer strong { color: var(--cp-danger); }
+    .review-item .correct-answer strong { color: var(--cp-success); }
+    .no-missed-answers { margin: 20px 0; color: var(--cp-success); font-weight: 650; }
     .enter { animation: reveal .35s ease; }
     @keyframes twinkle { to { opacity: .1; transform: scale(.7); } }
     @keyframes float { 50% { transform: translateY(-6px) rotate(-3deg); } }
@@ -237,6 +247,9 @@
         <div class="final-score"><strong id="final-score"></strong><span>/ 10</span></div>
         <p class="result-label" id="result-label"></p>
         <div class="result-dots" id="result-dots" aria-label="Your answers"></div>
+        <button class="review-toggle" id="review-toggle" type="button" aria-expanded="false" aria-controls="review-list" hidden>Review missed answers</button>
+        <p class="no-missed-answers" id="no-missed-answers" hidden>No missed answers — you got them all right!</p>
+        <div class="review-list" id="review-list" hidden></div>
         <button class="next" id="restart">Explore again <span aria-hidden="true">↻</span></button>
       </div>
     </section>
@@ -307,7 +320,7 @@
       answered = true;
       const item = questions[current];
       const correct = index === item.correct;
-      history.push(correct);
+      history.push({ correct, selectedIndex: index });
       if (correct) score++;
       $("score").textContent = `${score} ${score === 1 ? "point" : "points"}`;
       [...$("answers").children].forEach((button, i) => {
@@ -347,15 +360,40 @@
       $("result-copy").textContent = tier[2];
       $("final-score").textContent = score;
       $("result-label").textContent = `${score * 10}% correct · curiosity: unlimited`;
-      $("result-dots").replaceChildren(...history.map((hit, i) => {
+      $("result-dots").replaceChildren(...history.map((result, i) => {
         const dot = document.createElement("span");
-        dot.className = hit ? "hit" : "miss";
-        dot.textContent = hit ? "✓" : "×";
+        dot.className = result.correct ? "hit" : "miss";
+        dot.textContent = result.correct ? "✓" : "×";
         dot.setAttribute("role", "img");
-        dot.setAttribute("aria-label", `Question ${i + 1}: ${hit ? "correct" : "incorrect"}`);
-        dot.title = `Question ${i + 1}: ${hit ? "correct" : "incorrect"}`;
+        dot.setAttribute("aria-label", `Question ${i + 1}: ${result.correct ? "correct" : "incorrect"}`);
+        dot.title = `Question ${i + 1}: ${result.correct ? "correct" : "incorrect"}`;
         return dot;
       }));
+      const missed = history.flatMap((result, i) => result.correct ? [] : [{ ...questions[i], selectedIndex: result.selectedIndex, questionNumber: i + 1 }]);
+      $("review-list").replaceChildren(...missed.map((item) => {
+        const article = document.createElement("article");
+        article.className = "review-item";
+        const heading = document.createElement("h3");
+        heading.textContent = `Question ${item.questionNumber}: ${item.question}`;
+        const selected = document.createElement("p");
+        selected.className = "your-answer";
+        const selectedLabel = document.createElement("strong");
+        selectedLabel.textContent = "Your answer: ";
+        selected.append(selectedLabel, document.createTextNode(item.answers[item.selectedIndex]));
+        const correct = document.createElement("p");
+        correct.className = "correct-answer";
+        const correctLabel = document.createElement("strong");
+        correctLabel.textContent = "Correct answer: ";
+        correct.append(correctLabel, document.createTextNode(item.answers[item.correct]));
+        const explanation = document.createElement("p");
+        explanation.textContent = item.explanation;
+        article.append(heading, selected, correct, explanation);
+        return article;
+      }));
+      $("review-toggle").hidden = missed.length === 0;
+      $("review-toggle").setAttribute("aria-expanded", "false");
+      $("no-missed-answers").hidden = missed.length !== 0;
+      $("review-list").hidden = true;
       $("result-title").focus({ preventScroll: true });
     }
 
@@ -368,11 +406,21 @@
       current = 0;
       score = 0;
       history = [];
+      $("review-toggle").hidden = true;
+      $("review-toggle").setAttribute("aria-expanded", "false");
+      $("no-missed-answers").hidden = true;
+      $("review-list").replaceChildren();
+      $("review-list").hidden = true;
       $("score").textContent = "0 points";
       $("results").hidden = true;
       $("quiz").hidden = false;
       updateProgress(0);
       renderQuestion(true);
+    });
+    $("review-toggle").addEventListener("click", () => {
+      const expanded = $("review-toggle").getAttribute("aria-expanded") !== "true";
+      $("review-toggle").setAttribute("aria-expanded", String(expanded));
+      $("review-list").hidden = !expanded;
     });
     document.addEventListener("keydown", (event) => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
